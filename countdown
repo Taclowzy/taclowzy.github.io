@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zen Timer</title>
+    <style>
+        :root {
+            --bg-color: #f9f9f9;
+            --text-color: #333333;
+            --accent-color: #007AFF;
+            --accent-hover: #0051a8;
+            --secondary-text: #888888;
+            --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            transition: background-color 0.5s ease;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 480px;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        /* Timer Display */
+        .timer-wrapper {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            margin-bottom: 3rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .progress-ring {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.1s linear;
+            transform-origin: 50% 50%;
+            stroke: var(--accent-color);
+        }
+
+        .progress-ring__background {
+            stroke: #e0e0e0;
+        }
+
+        .time-display {
+            font-size: 4.5rem;
+            font-weight: 300;
+            font-variant-numeric: tabular-nums;
+            z-index: 10;
+            letter-spacing: -2px;
+            user-select: none;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+            font-family: inherit;
+            border-radius: 50px;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+            color: var(--text-color);
+            border: 1px solid transparent;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            opacity: 0.8;
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            color: white;
+            box-shadow: 0 4px 12px rgba(90, 125, 154, 0.2);
+        }
+
+        .btn-secondary {
+            border: 1px solid #ddd;
+            color: var(--secondary-text);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        /* Presets */
+        .presets {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.8rem;
+            width: 100%;
+        }
+
+        .preset-btn {
+            background: white;
+            border: 1px solid #eee;
+            padding: 0.8rem 0;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            color: var(--secondary-text);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .preset-btn.active {
+            background-color: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        /* Status Indicator */
+        .status {
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            color: var(--secondary-text);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .status.visible {
+            opacity: 1;
+        }
+
+        @media (max-width: 400px) {
+            .time-display {
+                font-size: 3.5rem;
+            }
+
+            .timer-wrapper {
+                width: 240px;
+                height: 240px;
+            }
+
+            .presets {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="timer-wrapper">
+            <svg class="progress-ring" width="280" height="280">
+                <circle class="progress-ring__background" stroke-width="5" fill="transparent" r="136" cx="140"
+                    cy="140" />
+                <circle class="progress-ring__circle" stroke-width="5" fill="transparent" r="136" cx="140" cy="140" />
+            </svg>
+            <div class="time-display" id="time-display">00:00</div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-secondary" id="reset-btn">Reset</button>
+            <button class="btn btn-primary" id="start-btn">Start</button>
+        </div>
+
+        <div class="presets" id="presets-container">
+            <!-- Generated by JS -->
+        </div>
+
+        <div class="status" id="status-text">Focus</div>
+    </div>
+
+    <script>
+        // --- Audio Controller ---
+        class AudioController {
+            constructor() {
+                this.ctx = null;
+                this.gainNode = null;
+                this.tickCount = 0;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                    this.gainNode = this.ctx.createGain();
+                    this.gainNode.connect(this.ctx.destination);
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playClick() {
+                if (!this.ctx) return;
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                // "Metronome" sound (Sharper)
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(1200, this.ctx.currentTime);
+
+                // Very short, sharp envelope
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.015);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.015);
+            }
+
+            playMechanismNoise(time) {
+                const bufferSize = this.ctx.sampleRate * 0.05; // 50ms
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const noiseFilter = this.ctx.createBiquadFilter();
+                noiseFilter.type = 'highpass';
+                noiseFilter.frequency.value = 800; // Lower highpass for "thicker" noise
+
+                const noiseGain = this.ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.03, time); // Quieter
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+
+                noise.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+
+                noise.start(time);
+            }
+
+            playAlarm() {
+                if (!this.ctx) return;
+
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C Major 7 chord
+
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+
+                    // Staggered entry
+                    const startTime = now + (i * 0.1);
+                    const duration = 2.5;
+
+                    gain.gain.setValueAtTime(0, startTime);
+                    gain.gain.linearRampToValueAtTime(0.2, startTime + 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                    osc.start(startTime);
+                    osc.stop(startTime + duration);
+                });
+            }
+        }
+
+        // --- Timer Logic ---
+        class ZenTimer {
+            constructor() {
+                this.duration = 0;
+                this.remaining = 0;
+                this.isRunning = false;
+                this.interval = null;
+                this.audio = new AudioController();
+
+                // DOM Elements
+                this.display = document.getElementById('time-display');
+                this.startBtn = document.getElementById('start-btn');
+                this.resetBtn = document.getElementById('reset-btn');
+                this.presetsContainer = document.getElementById('presets-container');
+                this.circle = document.querySelector('.progress-ring__circle');
+                this.statusText = document.getElementById('status-text');
+
+                // Circle Config
+                const radius = this.circle.r.baseVal.value;
+                this.circumference = radius * 2 * Math.PI;
+                this.circle.style.strokeDasharray = `${this.circumference} ${this.circumference}`;
+                this.circle.style.strokeDashoffset = this.circumference;
+
+                this.presets = [1, 2, 3, 5, 8, 10, 13, 15];
+
+                this.init();
+            }
+
+            init() {
+                this.renderPresets();
+                this.addEventListeners();
+                this.updateDisplay(0);
+                this.setPreset(5); // Default to 5 mins
+            }
+
+            renderPresets() {
+                this.presets.forEach(min => {
+                    const btn = document.createElement('button');
+                    btn.className = 'preset-btn';
+                    btn.textContent = `${min} min`;
+                    btn.onclick = () => this.setPreset(min);
+                    this.presetsContainer.appendChild(btn);
+                });
+            }
+
+            addEventListeners() {
+                this.startBtn.addEventListener('click', () => this.toggleTimer());
+                this.resetBtn.addEventListener('click', () => this.resetTimer());
+            }
+
+            setPreset(minutes) {
+                this.pauseTimer();
+                this.duration = minutes * 60;
+                this.remaining = this.duration;
+                this.updateDisplay(this.remaining);
+                this.setProgress(1);
+
+                // Update UI active state
+                document.querySelectorAll('.preset-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.textContent === `${minutes} min`);
+                });
+                this.statusText.classList.remove('visible');
+            }
+
+            toggleTimer() {
+                if (this.isRunning) {
+                    this.pauseTimer();
+                } else {
+                    this.startTimer();
+                }
+            }
+
+            startTimer() {
+                if (this.remaining <= 0) return;
+
+                this.audio.init(); // Ensure AudioContext is ready
+                this.isRunning = true;
+                this.startBtn.textContent = 'Pause';
+                this.statusText.textContent = 'Focusing...';
+                this.statusText.classList.add('visible');
+
+                let lastTick = Math.floor(this.remaining);
+
+                this.interval = setInterval(() => {
+                    this.remaining--;
+
+                    if (this.remaining >= 0) {
+                        this.updateDisplay(this.remaining);
+                        this.setProgress(this.remaining / this.duration);
+
+                        // Metronome tick every second
+                        if (this.remaining > 0) {
+                            this.audio.playClick();
+                        }
+                    }
+
+                    if (this.remaining <= 0) {
+                        this.completeTimer();
+                    }
+                }, 1000);
+            }
+
+            pauseTimer() {
+                this.isRunning = false;
+                this.startBtn.textContent = 'Start';
+                this.statusText.classList.remove('visible');
+                clearInterval(this.interval);
+            }
+
+            resetTimer() {
+                this.pauseTimer();
+                this.remaining = this.duration;
+                this.updateDisplay(this.remaining);
+                this.setProgress(1);
+            }
+
+            completeTimer() {
+                this.pauseTimer();
+                this.audio.playAlarm();
+                this.statusText.textContent = 'Completed';
+                this.statusText.classList.add('visible');
+                this.startBtn.textContent = 'Start';
+                this.remaining = 0;
+                this.updateDisplay(0);
+                this.setProgress(0);
+            }
+
+            updateDisplay(seconds) {
+                const m = Math.floor(seconds / 60);
+                const s = seconds % 60;
+                this.display.textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                document.title = `Zen Timer - ${this.display.textContent}`;
+            }
+
+            setProgress(percent) {
+                const offset = this.circumference - (percent * this.circumference);
+                this.circle.style.strokeDashoffset = offset;
+            }
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            new ZenTimer();
+        });
+    </script>
+</body>
+
+</html>
